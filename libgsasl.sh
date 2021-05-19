@@ -16,9 +16,6 @@ _VER="$1"
 (
   cd "${_NAM}" || exit
 
-  # This is pretty much guesswork and this warning remains:
-  #    `configure: WARNING: using cross tools not prefixed with host triplet`
-  # Even with `_CCPREFIX` provided.
   if [ "${_OS}" != 'win' ]; then
 
     # https://clang.llvm.org/docs/CrossCompilation.html
@@ -37,55 +34,70 @@ _VER="$1"
 
   rm -r -f pkg
 
-  find . -name '*.o'   -delete
-  find . -name '*.a'   -delete
-  find . -name '*.lo'  -delete
-  find . -name '*.la'  -delete
-  find . -name '*.lai' -delete
-  find . -name '*.Plo' -delete
-  find . -name '*.pc'  -delete
-  find . -name '*.dll' -delete
-  find . -name '*.exe' -delete
-
-  export CC="${_CCPREFIX}gcc -static-libgcc"
   export LDFLAGS="${_OPTM}"
+  unset ldonly
+
+  # No success in convincing the build system to work correctly with clang:
+  if [ "${CC}" = 'mingw-clang' ]; then
+
+    # Skip 'gltests' build due to errors like this:
+    #   ./signal.h:922:3: error: unknown type name 'uid_t'; did you mean 'pid_t'?
+    sed -i.bak -E 's| gltests||g' ./Makefile.am
+
+    export CC='clang'
+    if [ "${_OS}" != 'win' ]; then
+      export options="${options} --target=${_TRIPLET} --with-sysroot=${_SYSROOT}"
+      LDFLAGS="${LDFLAGS} -target ${_TRIPLET} --sysroot ${_SYSROOT}"
+      [ "${_OS}" = 'linux' ] && ldonly="${ldonly} -L$(find "/usr/lib/gcc/${_TRIPLET}" -name '*posix' | head -n 1)"
+    fi
+    export AR=${_CCPREFIX}ar
+    export NM=${_CCPREFIX}nm
+    export RANLIB=${_CCPREFIX}ranlib
+    export RC=${_CCPREFIX}windres
+  else
+    export CC="${_CCPREFIX}gcc -static-libgcc"
+  fi
+
   export CFLAGS="${LDFLAGS} -fno-ident"
+  LDFLAGS="${LDFLAGS}${ldonly}"
   [ "${_CPU}" = 'x86' ] && CFLAGS="${CFLAGS} -fno-asynchronous-unwind-tables"
   # shellcheck disable=SC2086
   ./configure ${options} \
     --disable-dependency-tracking \
     --disable-silent-rules \
-    --disable-doc \
     --disable-rpath \
     --enable-static \
-    --enable-shared \
+    --disable-shared \
+    --enable-scram-sha1 \
+    --enable-scram-sha256 \
+    --disable-obsolete \
+    --disable-valgrind-tests \
     '--prefix=/usr/local' \
     --silent
-# make --jobs 2 clean >/dev/null
+  make --jobs 2 clean >/dev/null
   make --jobs 2 install "DESTDIR=$(pwd)/pkg" # >/dev/null # V=1
 
   # DESTDIR= + --prefix=
   _pkg='pkg/usr/local'
+
+  # Build fixups for clang
+
+  # libgsasl configure misdetects CC=clang as MSVC and then uses '.lib'
+  # extension. So rename these to '.a':
+  if [ -f "${_pkg}/lib/libgsasl.lib" ]; then
+    sed -i.bak -E "s|\.lib'$|.a'|g" "${_pkg}/lib/libgsasl.la"
+    mv "${_pkg}/lib/libgsasl.lib" "${_pkg}/lib/libgsasl.a"
+  fi
 
   # Make steps for determinism
 
   readonly _ref='NEWS'
 
   "${_CCPREFIX}strip" --preserve-dates --strip-debug --enable-deterministic-archives ${_pkg}/lib/*.a
-  "${_CCPREFIX}strip" --preserve-dates --strip-all ${_pkg}/bin/*.exe
 
-  ../_peclean.py "${_ref}" ${_pkg}/bin/*.exe
-
-  ../_sign-code.sh "${_ref}" ${_pkg}/bin/*.exe
-
-  touch -c -r "${_ref}" ${_pkg}/bin/*.exe
   touch -c -r "${_ref}" ${_pkg}/lib/*.a
   touch -c -r "${_ref}" ${_pkg}/lib/pkgconfig/*.pc
   touch -c -r "${_ref}" ${_pkg}/include/*.h
-
-  # Tests
-
-  ${_pkg}/bin/idn2.exe --version
 
   # Create package
 
@@ -96,7 +108,6 @@ _VER="$1"
   mkdir -p "${_DST}/include"
   mkdir -p "${_DST}/lib/pkgconfig"
 
-  cp -f -p ${_pkg}/bin/*.exe          "${_DST}/"
   cp -f -p ${_pkg}/lib/*.a            "${_DST}/lib/"
   cp -f -p ${_pkg}/lib/pkgconfig/*.pc "${_DST}/lib/pkgconfig/"
   cp -f -p ${_pkg}/include/*.h        "${_DST}/include/"

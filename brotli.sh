@@ -12,7 +12,6 @@ export _DST
 _NAM="$(basename "$0")"
 _NAM="$(echo "${_NAM}" | cut -f 1 -d '.')"
 _VER="$1"
-_cpu="$2"
 
 (
   cd "${_NAM}" || exit
@@ -37,8 +36,8 @@ _cpu="$2"
   find . -name '*.Plo' -delete
   find . -name '*.pc'  -delete
 
-  _CFLAGS="-m${_cpu} -fno-ident -DMINGW_HAS_SECURE_API"
-  [ "${_cpu}" = '32' ] && _CFLAGS="${_CFLAGS} -fno-asynchronous-unwind-tables"
+  _CFLAGS="${_OPTM} -fno-ident -DMINGW_HAS_SECURE_API"
+  [ "${_CPU}" = 'x86' ] && _CFLAGS="${_CFLAGS} -fno-asynchronous-unwind-tables"
 
   options=''
   options="${options} -DCMAKE_SYSTEM_NAME=Windows"
@@ -113,8 +112,8 @@ _cpu="$2"
 
   # Create package
 
-  _OUT="${_NAM}-${_VER}${_REV}-win${_cpu}-mingw"
-  _BAS="${_NAM}-${_VER}-win${_cpu}-mingw"
+  _OUT="${_NAM}-${_VER}${_REV}${_PKGSUFFIX}"
+  _BAS="${_NAM}-${_VER}${_PKGSUFFIX}"
   _DST="$(mktemp -d)/${_BAS}"
 
   mkdir -p "${_DST}"
@@ -129,9 +128,6 @@ _cpu="$2"
   cp -f -p ${_pkg}/lib/*.a            "${_DST}/lib/"
   cp -f -p README.md                  "${_DST}/"
   cp -f -p LICENSE                    "${_DST}/LICENSE.txt"
-
-  unix2dos --quiet --keepdate "${_DST}"/*.md
-  unix2dos --quiet --keepdate "${_DST}"/*.txt
 
   ../_pkg.sh "$(pwd)/${_ref}"
 )

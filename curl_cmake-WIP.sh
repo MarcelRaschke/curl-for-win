@@ -1,5 +1,7 @@
 #!/bin/sh -ex
 
+# WORK-IN-SLOW-PROGRESS
+
 # Copyright 2014-present Viktor Szakats <https://vsz.me/>
 # See LICENSE.md
 
@@ -10,53 +12,138 @@ export _BAS
 export _DST
 
 _NAM="$(basename "$0")"
-_NAM="$(echo "${_NAM}" | cut -f 1 -d '.')"
+_NAM="$(echo "${_NAM}" | cut -f 1 -d '.' | cut -f 1 -d '_')"
 _VER="$1"
 
 (
   cd "${_NAM}" || exit
+
+  # Cross-tasks
+
+  if [ "${_OS}" = 'win' ]; then
+    opt_gmsys='-GMSYS Makefiles'
+    # Without this option, the value '/usr/local' becomes 'msys64/usr/local'
+    export MSYS2_ARG_CONV_EXCL='-DCMAKE_INSTALL_PREFIX='
+  fi
 
   # Prepare build
 
   find . -name '*.dll' -delete
   find . -name '*.def' -delete
 
-  if [ ! -f 'Makefile' ]; then
-    autoreconf -fi
-  fi
-
   # Build
 
-  options='mingw32-ipv6-sspi-ldaps-srp'
+  rm -r -f pkg
 
-  export ARCH
-  [ "${_CPU}" = 'x86' ] && ARCH="w32"
-  [ "${_CPU}" = 'x64' ] && ARCH="w64"
+  find . -name '*.a'  -delete
+  find . -name '*.pc' -delete
 
-  # Use -DCURL_STATICLIB when compiling libcurl. This option prevents
+  for pass in 'static'; do
+
+    rm -r -f CMakeFiles CMakeCache.txt cmake_install.cmake
+
+    find . -name '*.o'   -delete
+    find . -name '*.obj' -delete
+    find . -name '*.lo'  -delete
+    find . -name '*.la'  -delete
+    find . -name '*.lai' -delete
+    find . -name '*.Plo' -delete
+
+    # Use -DCURL_STATICLIB when compiling libcurl. This option prevents
   # public libcurl functions being marked as 'exported'. It is useful to
-  # avoid the chance of libcurl functions getting exported from final
-  # binaries when linked against static libcurl lib.
-  export CURL_CFLAG_EXTRAS='-DCURL_STATICLIB -DCURL_ENABLE_MQTT -fno-ident -DHAVE_ATOMIC -DUSE_HSTS'
-  [ "${_CPU}" = 'x86' ] && CURL_CFLAG_EXTRAS="${CURL_CFLAG_EXTRAS} -fno-asynchronous-unwind-tables"
-  export CURL_LDFLAG_EXTRAS='-static-libgcc -Wl,--nxcompat -Wl,--dynamicbase'
-  export CURL_LDFLAG_EXTRAS_EXE
-  export CURL_LDFLAG_EXTRAS_DLL
-  if [ "${_CPU}" = 'x86' ]; then
-    CURL_LDFLAG_EXTRAS_EXE='-Wl,--pic-executable,-e,_mainCRTStartup'
-  else
-    CURL_LDFLAG_EXTRAS_EXE='-Wl,--pic-executable,-e,mainCRTStartup'
-    CURL_LDFLAG_EXTRAS_DLL='-Wl,--image-base,0x150000000'
-    CURL_LDFLAG_EXTRAS="${CURL_LDFLAG_EXTRAS} -Wl,--high-entropy-va"
-  fi
+    # avoid the chance of libcurl functions getting exported from final
+    # binaries when linked against static libcurl lib.
+    _CFLAGS="${_OPTM} -fno-ident -DCURL_STATICLIB"
+    [ "${_CPU}" = 'x86' ] && _CFLAGS="${_CFLAGS} -fno-asynchronous-unwind-tables"
+    _LDFLAGS='-Wl,--nxcompat -Wl,--dynamicbase'
+    if [ "${_CPU}" = 'x86' ]; then
+      _LDFLAGS_EXE='-Wl,--pic-executable,-e,_mainCRTStartup'
+    else
+      _LDFLAGS_EXE='-Wl,--pic-executable,-e,mainCRTStartup'
+      _LDFLAGS="${_LDFLAGS} -Wl,--high-entropy-va"
+      _LDFLAGS_DLL='-Wl,--image-base,0x150000000'
+    fi
+    if [ "${_BRANCH#*master*}" = "${_BRANCH}" ] && [ "${_BRANCH#*main*}" = "${_BRANCH}" ]; then
+      _LDFLAGS_EXE="${_LDFLAGS_EXE} -Wl,-Map,curl.map"
+      _LDFLAGS_DLL="${_LDFLAGS_DLL} -Wl,-Map,libcurl.map"
+    fi
 
-  CURL_CFLAG_EXTRAS="${CURL_CFLAG_EXTRAS} -DUNICODE -D_UNICODE"
-  CURL_LDFLAG_EXTRAS_EXE="${CURL_LDFLAG_EXTRAS_EXE} -municode"
+    options='-DCMAKE_SYSTEM_NAME=Windows'
+    options="${options} -DCMAKE_BUILD_TYPE=Release"
+    [ "${pass}" = 'static' ] && options="${options} -DBUILD_SHARED_LIBS=0"
+    [ "${pass}" = 'shared' ] && options="${options} -DBUILD_SHARED_LIBS=1"
+    options="${options} -DCURL_STATIC_CRT=1"
+    options="${options} -DCURL_WINDOWS_SSPI=1"
+    options="${options} -DCMAKE_USE_OPENSSL=1"
+    options="${options} -DZLIB_INCLUDE_DIR:PATH=$(pwd)/../zlib/pkg/usr/local/include"
+    options="${options} -DZLIB_LIBRARY:FILEPATH=$(pwd)/../zlib/pkg/usr/local/lib/libz.a"
+    options="${options} -DOPENSSL_ROOT_DIR=$(pwd)/../openssl/pkg/usr/local/"
+    options="${options} -DOPENSSL_INCLUDE_DIR=$(pwd)/../openssl/pkg/usr/local/include"
+    options="${options} -DOPENSSL_LIBRARIES=$(pwd)/../openssl/pkg/usr/local/lib"
+    options="${options} -DOPENSSL_CRYPTO_LIBRARY=$(pwd)/../openssl/pkg/usr/local/lib"
+    options="${options} -DCMAKE_RC_COMPILER=${_CCPREFIX}windres"
+    options="${options} -DCMAKE_INSTALL_MESSAGE=NEVER"
+    options="${options} -DCMAKE_INSTALL_PREFIX=/usr/local"
 
-  if [ "${_BRANCH#*master*}" = "${_BRANCH}" ] && [ "${_BRANCH#*main*}" = "${_BRANCH}" ]; then
-    CURL_LDFLAG_EXTRAS_EXE="${CURL_LDFLAG_EXTRAS_EXE} -Wl,-Map,curl.map"
-    CURL_LDFLAG_EXTRAS_DLL="${CURL_LDFLAG_EXTRAS_DLL} -Wl,-Map,libcurl.map"
-  fi
+    if [ -d ../brotli ]; then
+      options="${options} -DCURL_BROTLI=1"
+      options="${options} -DBROTLI_INCLUDE_DIR:PATH=$(pwd)/../brotli/pkg/usr/local/include"
+      options="${options} -DBROTLICOMMON_LIBRARY:FILEPATH=$(pwd)/../brotli/pkg/usr/local/lib/libbrotlicommon-static.a"
+      options="${options} -DBROTLIDEV_LIBRARY:FILEPATH=$(pwd)/../brotli/pkg/usr/local/lib/libbrotlidec-static.a"
+    fi
+    if [ -d ../c-ares ]; then
+      options="${options} -DENABLE_ARES=1"
+    fi
+    if [ -d ../libssh2 ]; then
+      options="${options} -DLIBSSH2_INCLUDE_DIR:PATH=$(pwd)/../libssh2/pkg/usr/local/include"
+      options="${options} -DLIBSSH2_LIBRARY:FILEPATH=$(pwd)/../libssh2/pkg/usr/local/lib/libssh2.a"
+    fi
+    if [ -d ../nghttp2 ]; then
+      options="${options} -DUSE_NGHTTP2=1"
+      options="${options} -DNGHTTP2_INCLUDE_DIR:PATH=$(pwd)/../nghttp2/pkg/usr/local/include"
+      options="${options} -DNGHTTP2_LIBRARY:FILEPATH=$(pwd)/../nghttp2/pkg/usr/local/lib/libnghttp2.a"
+      _CFLAGS="${_CFLAGS} -DNGHTTP2_STATICLIB"
+    fi
+
+    # https://cmake.org/cmake/help/v3.11/manual/cmake-properties.7.html#properties-on-targets
+    [ "${pass}" = 'shared' ] && [ "${_CPU}" = 'x64' ] && options="${options} -DCMAKE_RELEASE_POSTFIX=-x64"
+
+    if [ "${CC}" = 'mingw-clang' ]; then
+      unset CC
+
+      [ "${_OS}" = 'linux' ] && _CFLAGS="-L$(find "/usr/lib/gcc/${_TRIPLET}" -name '*posix' | head -n 1) ${_CFLAGS}"
+
+      # '-DMINGW=1' required to detect OpenSSL
+
+      # shellcheck disable=SC2086
+      cmake . ${options} "${opt_gmsys}" \
+        "-DMINGW=1" \
+        "-DCMAKE_SYSROOT=${_SYSROOT}" \
+        "-DCMAKE_LIBRARY_ARCHITECTURE=${_TRIPLET}" \
+        "-DCMAKE_C_COMPILER_TARGET=${_TRIPLET}" \
+        "-DCMAKE_C_COMPILER=clang" \
+        "-DCMAKE_C_FLAGS=${_CFLAGS}" \
+        "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc ${_LDFLAGS_EXE}" \
+        "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc ${_LDFLAGS_DLL}"
+    else
+      unset CC
+
+      # shellcheck disable=SC2086
+      cmake . ${options} "${opt_gmsys}" \
+        "-DCMAKE_C_COMPILER=${_CCPREFIX}gcc" \
+        "-DCMAKE_C_FLAGS=-static-libgcc ${_CFLAGS}" \
+        "-DCMAKE_EXE_LINKER_FLAGS=${_LDFLAGS_EXE}" \
+        "-DCMAKE_SHARED_LINKER_FLAGS=${_LDFLAGS_DLL}"
+    fi
+
+    make install "DESTDIR=$(pwd)/pkg"  # VERBOSE=1
+  done
+
+  # DESTDIR= + CMAKE_INSTALL_PREFIX
+  _pkg='pkg/usr/local'
+
+  if false; then
+  options='mingw32-ipv6-sspi-ldaps-srp'
 
   # Generate .def file for libcurl by parsing curl headers.
   # Useful to limit .dll exports to libcurl functions meant to be exported.
@@ -155,24 +242,7 @@ _VER="$1"
     '../libgsasl/pkg/usr/local/lib/libgsasl.dll.a' \
     '../openssl/libcrypto.dll.a' \
     '../openssl/libssl.dll.a'
-
-  export CROSSPREFIX="${_CCPREFIX}"
-
-  if [ "${CC}" = 'mingw-clang' ]; then
-    export CURL_CC="clang${_CCSUFFIX}"
-    if [ "${_OS}" != 'win' ]; then
-      CURL_CFLAG_EXTRAS="-target ${_TRIPLET} --sysroot ${_SYSROOT} ${CURL_CFLAG_EXTRAS}"
-      [ "${_OS}" = 'linux' ] && CURL_LDFLAG_EXTRAS="-L$(find "/usr/lib/gcc/${_TRIPLET}" -name '*posix' | head -n 1) ${CURL_LDFLAG_EXTRAS}"
-      CURL_LDFLAG_EXTRAS="-target ${_TRIPLET} --sysroot ${_SYSROOT} ${CURL_LDFLAG_EXTRAS}"
-    fi
-    # This doesn't work yet, due to:
-    #   /usr/local/bin/x86_64-w64-mingw32-ld: asyn-thread.o:asyn-thread.c:(.rdata$.refptr.__guard_dispatch_icall_fptr[.refptr.__guard_dispatch_icall_fptr]+0x0): undefined reference to `__guard_dispatch_icall_fptr'
-  # CURL_CFLAG_EXTRAS="${CURL_CFLAG_EXTRAS} -Xclang -cfguard"
-  # CURL_LDFLAG_EXTRAS="${CURL_LDFLAG_EXTRAS} -Xlinker -guard:cf"
   fi
-
-  ${_MAKE} -j 2 mingw32-clean
-  ${_MAKE} -j 2 "${options}"
 
   # Download CA bundle
   [ -f '../ca-bundle.crt' ] || \

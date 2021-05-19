@@ -1,15 +1,8 @@
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
+[![License](https://raw.githubusercontent.com/curl/curl-for-win/master/MIT.svg?sanitize=1)](LICENSE.md)
 [![Build status](https://ci.appveyor.com/api/projects/status/8yf6xjgq7u0cm013/branch/master?svg=true)](https://ci.appveyor.com/project/curlorg/curl-for-win/branch/master)
-[![Build Status](https://github.com/curl/curl-for-win/workflows/build/badge.svg?branch=master)](https://github.com/curl/curl-for-win/actions?query=branch%3Amaster)
 
-# Automated, reproducible, transparent, Windows builds for [curl](https://curl.se/), [nghttp2](https://nghttp2.org/), [brotli](https://github.com/google/brotli), [zstd](https://github.com/facebook/zstd), [libssh2](https://libssh2.org/) and [OpenSSL](https://www.openssl.org/)
+# Automated, reproducible, transparent, Windows builds for [curl](https://curl.se/) and [OpenSSL](https://www.openssl.org/), [libssh2](https://libssh2.org/), [nghttp2](https://nghttp2.org/), [brotli](https://github.com/google/brotli), [zstd](https://github.com/facebook/zstd), [zlib-ng](https://github.com/zlib-ng/zlib-ng)/[zlib](https://github.com/madler/zlib), [libgsasl](https://www.gnu.org/software/gsasl/)
 
-  - **DEPRECATION NOTE: Our `bintray.com` repositories for binary downloads
-    will no longer be updated and the archive will be deleted on 2021-03-01.
-    Please switch to the new, [official](#binary-package-download) URLs to
-    download the latest or specific past versions. The versions offered there
-    are all immune to [CVE-2019-5443](https://curl.se/docs/CVE-2019-5443.html),
-    making this a good time to update to a recent, safe version.**
   - Packaging aims to follow popular binary releases found on the internet.
   - Both x64 and x86 packages are built using the same process.
   - Binary packages are downloadable in `.zip` and `.tar.xz` formats.<br>
@@ -18,15 +11,15 @@
   - Binary packages are signed with PGP key [EXPERIMENTAL]:
     <br><https://raw.githubusercontent.com/curl/curl-for-win/master/sign-pkg-public.asc>
     <br>`002C 1689 65BA C220 2118  408B 4ED8 5DF9 BB3D 0DE8`
-  - Standalone `curl.exe` (only
+  - Standalone `curl.exe` and `libcurl.dll` (only
     [`msvcrt.dll`](https://en.wikipedia.org/wiki/Microsoft_Windows_library_files#MSVCRT.DLL,_MSVCP*.DLL_and_CRTDLL.DLL)
     is
     [required](https://devblogs.microsoft.com/oldnewthing/?p=1273)).
   - curl/libcurl are built with [HTTP/2](https://en.wikipedia.org/wiki/HTTP/2)
     support enabled.
   - curl/libcurl features enabled by default (`{upcoming}`):
-    <br>`dict file ftp ftps gopher {gophers} http https imap imaps ldap ldaps mqtt pop3 pop3s rtsp scp sftp smb smbs smtp smtps telnet tftp`
-    <br>`AsynchDNS HSTS HTTP2 HTTPS-proxy IDN IPv6 Kerberos Largefile MultiSSL NTLM SPNEGO SSL SSPI TLS-SRP Unicode UnixSockets alt-svc brotli libz zstd`
+    <br>`dict file ftp ftps gopher gophers http https imap imaps ldap ldaps mqtt pop3 pop3s rtsp scp sftp smb smbs smtp smtps telnet tftp`
+    <br>`alt-svc AsynchDNS brotli gsasl HSTS HTTP2 HTTPS-proxy IDN IPv6 Kerberos Largefile libz MultiSSL NTLM SPNEGO SSL SSPI TLS-SRP Unicode UnixSockets zstd`
   - The build process is fully transparent by using publicly available
     open source code, C compiler, build scripts and running the build
     [in public](https://ci.appveyor.com/project/curlorg/curl-for-win/branch/master),
@@ -39,7 +32,8 @@
     [LLVM/Clang](https://clang.llvm.org/) for projects supporting it.
   - Binaries are cross-built and published from Linux
     (via [AppVeyor CI](https://www.appveyor.com/)), using LLVM/Clang for
-    curl, libssh2, nghttp2, c-ares, brotli, zstd and zlib, and GCC for OpenSSL.
+    curl, libssh2, nghttp2, c-ares, libgsasl, brotli, zstd and zlib-ng/zlib,
+    and GCC for OpenSSL)
     <br>Exact OS image used for the builds is
     [`debian:testing`](https://github.com/debuerreotype/docker-debian-artifacts/tree/dist-amd64/testing)
     (a [reproducible](https://github.com/debuerreotype/debuerreotype) image)
@@ -63,7 +57,7 @@
     allowing this project to automatically benefit from continuous C compiler
     updates.
   - Patching policy: No locally maintained patches. Patches are only
-    applied locally if already merged upstream or &mdash; in case it's
+    applied locally if already merged upstream or &mdash; in case it is
     necessary for a successful build &mdash; had them submitted upstream with
     fair confidence of getting accepted.
   - curl/libcurl are built in MultiSSL mode, with both OpenSSL and
@@ -79,7 +73,7 @@
       <https://ci.appveyor.com/project/curlorg/curl-for-win/branch/master>
   - The build process is multi-platform and able to cross-build Windows
     executables from \*nix hosts (Linux and macOS tested.)
-  - Packages created across different host platforms won't currently have
+  - Packages created across different host platforms will not currently have
     identical hashes. The reason for this is the slightly different build
     options and versions of the `mingw-w64` and `binutils` tools.
   - Code signing is implemented and enabled with a self-signed certificate.
@@ -96,10 +90,6 @@
     <br>Examples:
     <br><https://curl.se/windows/dl-7.73.0/>
     <br><https://curl.se/windows/dl-7.73.0_1/>
-
-    > **DEPRECATION NOTE: Our `bintray.com` downloads are deprecated.
-    > They will not be updated anymore and the archive will be deleted on
-    > 2021-03-01.**
 
 # Build logs
 
@@ -121,4 +111,4 @@
 
 ---
 This document &copy;&nbsp;2014&ndash;present [Viktor Szakats](https://vsz.me/)<br>
-[![Creative Commons Attribution-ShareAlike 4.0](https://mirrors.creativecommons.org/presskit/buttons/80x15/svg/by-sa.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
+[![Creative Commons Attribution-ShareAlike 4.0](https://raw.githubusercontent.com/curl/curl-for-win/master/cc-by-sa.svg?sanitize=1)](https://creativecommons.org/licenses/by-sa/4.0/)

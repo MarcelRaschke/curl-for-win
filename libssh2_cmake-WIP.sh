@@ -1,5 +1,7 @@
 #!/bin/sh -ex
 
+# WORK-IN-SLOW-PROGRESS
+
 # Copyright 2014-present Viktor Szakats <https://vsz.me/>
 # See LICENSE.md
 
@@ -12,7 +14,6 @@ export _DST
 _NAM="$(basename "$0")"
 _NAM="$(echo "${_NAM}" | cut -f 1 -d '.' | cut -f 1 -d '_')"
 _VER="$1"
-_cpu="$2"
 
 (
   cd "${_NAM}" || exit
@@ -43,10 +44,10 @@ _cpu="$2"
     find . -name '*.lai' -delete
     find . -name '*.Plo' -delete
 
-    _CFLAGS="-m${_cpu} -fno-ident"
-    [ "${_cpu}" = '32' ] && _CFLAGS="${_CFLAGS} -fno-asynchronous-unwind-tables"
+    _CFLAGS="${_OPTM} -fno-ident"
+    [ "${_CPU}" = 'x86' ] && _CFLAGS="${_CFLAGS} -fno-asynchronous-unwind-tables"
     _LDFLAGS='-Wl,--nxcompat -Wl,--dynamicbase'
-    [ "${_cpu}" = '64' ] && _LDFLAGS="${_LDFLAGS} -Wl,--high-entropy-va -Wl,--image-base,0x152000000"
+    [ "${_CPU}" = 'x64' ] && _LDFLAGS="${_LDFLAGS} -Wl,--high-entropy-va -Wl,--image-base,0x152000000"
     if [ "${_BRANCH#*master*}" = "${_BRANCH}" ] && [ "${_BRANCH#*main*}" = "${_BRANCH}" ]; then
       _LDFLAGS="${_LDFLAGS} -Wl,-Map,libssh2.map"
     fi
@@ -59,8 +60,13 @@ _cpu="$2"
     options="${options} -DBUILD_EXAMPLES=0"
     options="${options} -DBUILD_TESTING=0"
     options="${options} -DENABLE_ZLIB_COMPRESSION=1"
-    options="${options} -DZLIB_INCLUDE_DIR:PATH=$(pwd)/../zlib/pkg/usr/local/include"
-    options="${options} -DZLIB_LIBRARY:FILEPATH=$(pwd)/../zlib/pkg/usr/local/lib/libz.a"
+    if [ -d ../zlib-ng ]; then
+      options="${options} -DZLIB_INCLUDE_DIR:PATH=$(pwd)/../zlib-ng/pkg/usr/local/include"
+      options="${options} -DZLIB_LIBRARY:FILEPATH=$(pwd)/../zlib-ng/pkg/usr/local/lib/libz.a"
+    else
+      options="${options} -DZLIB_INCLUDE_DIR:PATH=$(pwd)/../zlib/pkg/usr/local/include"
+      options="${options} -DZLIB_LIBRARY:FILEPATH=$(pwd)/../zlib/pkg/usr/local/lib/libz.a"
+    fi
     options="${options} -DCRYPTO_BACKEND=OpenSSL"
     options="${options} -DOPENSSL_ROOT_DIR=$(pwd)/../openssl/pkg/C:/Windows/System32/OpenSSL/"
     options="${options} -DOPENSSL_INCLUDE_DIR=$(pwd)/../openssl/pkg/C:/Windows/System32/OpenSSL/include"
@@ -71,7 +77,7 @@ _cpu="$2"
     options="${options} -DCMAKE_INSTALL_PREFIX=/usr/local"
 
     # https://cmake.org/cmake/help/v3.11/manual/cmake-properties.7.html#properties-on-targets
-    [ "${pass}" = 'shared' ] && [ "${_cpu}" = '64' ] && options="${options} -DCMAKE_RELEASE_POSTFIX=-x64"
+    [ "${pass}" = 'shared' ] && [ "${_CPU}" = 'x64' ] && options="${options} -DCMAKE_RELEASE_POSTFIX=-x64"
 
     if [ "${CC}" = 'mingw-clang' ]; then
       unset CC
@@ -109,8 +115,8 @@ _cpu="$2"
   ls -l ${_pkg}/lib/*.a
 
   # Stick to the name used by GNU Make builds
-  [ "${_cpu}" = '32' ] && mv -f ${_pkg}/lib/liblibssh2.dll.a     ${_pkg}/lib/libssh2.dll.a
-  [ "${_cpu}" = '64' ] && mv -f ${_pkg}/lib/liblibssh2-x64.dll.a ${_pkg}/lib/libssh2.dll.a
+  [ "${_CPU}" = 'x86' ] && mv -f ${_pkg}/lib/liblibssh2.dll.a     ${_pkg}/lib/libssh2.dll.a
+  [ "${_CPU}" = 'x64' ] && mv -f ${_pkg}/lib/liblibssh2-x64.dll.a ${_pkg}/lib/libssh2.dll.a
 
   # curl makefile.m32 assumes a certain layout.
   # Also make sure to copy the static library only:
@@ -143,8 +149,8 @@ _cpu="$2"
 
   # Create package
 
-  _OUT="${_NAM}-${_VER}${_REV}-win${_cpu}-mingw"
-  _BAS="${_NAM}-${_VER}-win${_cpu}-mingw"
+  _OUT="${_NAM}-${_VER}${_REV}${_PKGSUFFIX}"
+  _BAS="${_NAM}-${_VER}${_PKGSUFFIX}"
   _DST="$(mktemp -d)/${_BAS}"
 
   mkdir -p "${_DST}/docs"
@@ -179,9 +185,6 @@ _cpu="$2"
     cp -f -p ${_pkg}/bin/*.map   "${_DST}/bin/"
     cp -f -p ${_pkg}/bin/*.def   "${_DST}/bin/" || true
   fi
-
-  unix2dos --quiet --keepdate "${_DST}"/*.txt
-  unix2dos --quiet --keepdate "${_DST}"/docs/*.txt
 
   ../_pkg.sh "$(pwd)/${_ref}"
 )

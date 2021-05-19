@@ -12,7 +12,6 @@ export _DST
 _NAM="$(basename "$0")"
 _NAM="$(echo "${_NAM}" | cut -f 1 -d '.')"
 _VER="$1"
-_cpu="$2"
 
 (
   cd "${_NAM}" || exit 0
@@ -47,17 +46,17 @@ _cpu="$2"
   find . -name '*.exe' -delete
   find . -name '*.tmp' -delete
 
-  [ "${_cpu}" = '32' ] && options='mingw'
-  [ "${_cpu}" = '64' ] && options='mingw64'
+  [ "${_CPU}" = 'x86' ] && options='mingw'
+  [ "${_CPU}" = 'x64' ] && options='mingw64'
   if [ "${_BRANCH#*lto*}" != "${_BRANCH}" ]; then
     # Create a fixed seed based on the timestamp of the OpenSSL source package.
     options="${options} -flto -ffat-lto-objects -frandom-seed=${unixts}"
     # mingw64 build (as of mingw 5.2.0) will fail without the `no-asm` option.
-    [ "${_cpu}" = '64' ] && options="${options} no-asm"
+    [ "${_CPU}" = 'x64' ] && options="${options} no-asm"
   fi
   options="${options} no-filenames"
-  [ "${_cpu}" = '64' ] && options="${options} enable-ec_nistp_64_gcc_128 -Wl,--high-entropy-va -Wl,--image-base,0x151000000"
-  [ "${_cpu}" = '32' ] && options="${options} -fno-asynchronous-unwind-tables"
+  [ "${_CPU}" = 'x64' ] && options="${options} enable-ec_nistp_64_gcc_128 -Wl,--high-entropy-va -Wl,--image-base,0x151000000"
+  [ "${_CPU}" = 'x86' ] && options="${options} -fno-asynchronous-unwind-tables"
 
   if [ -f 'CHANGES.md' ] && [ "${CC}" = 'mingw-clang' ]; then
     # OpenSSL 3.x
@@ -67,15 +66,16 @@ _cpu="$2"
     if [ "${_OS}" != 'win' ]; then
       export options="${options} --target=${_TRIPLET} --sysroot=${_SYSROOT}"
       [ "${_OS}" = 'linux' ] && options="-L$(find "/usr/lib/gcc/${_TRIPLET}" -name '*posix' | head -n 1) ${options}"
-    # export LDFLAGS="--target=${_TRIPLET} --sysroot=${_SYSROOT} ${LDFLAGS}"
+    # export LDFLAGS="-target ${_TRIPLET} --sysroot ${_SYSROOT} ${LDFLAGS}"
     fi
     export AR=${_CCPREFIX}ar
     export NM=${_CCPREFIX}nm
     export RANLIB=${_CCPREFIX}ranlib
     export RC=${_CCPREFIX}windres
-    unset _CCPREFIX
+    _CONF_CCPREFIX=
   else
     unset CC
+    _CONF_CCPREFIX="${_CCPREFIX}"
   fi
 
   # Patch OpenSSL ./Configure to make it accept Windows-style absolute
@@ -109,7 +109,7 @@ _cpu="$2"
 
   # shellcheck disable=SC2086
   ./Configure-patched ${options} shared \
-    "--cross-compile-prefix=${_CCPREFIX}" \
+    "--cross-compile-prefix=${_CONF_CCPREFIX}" \
     -fno-ident \
     -Wl,--nxcompat -Wl,--dynamicbase \
     no-unit-test \
@@ -173,13 +173,13 @@ _cpu="$2"
   "${_CCPREFIX}objdump" --all-headers "${_pkg}"/bin/openssl.exe | grep -a -E -i "(file format|dll name)"
   "${_CCPREFIX}objdump" --all-headers "${_pkg}"/bin/*.dll       | grep -a -E -i "(file format|dll name)"
 
-  ${_WINE} "${_pkg}"/bin/openssl.exe version
-  ${_WINE} "${_pkg}"/bin/openssl.exe ciphers
+  ${_WINE} "${_pkg}"/bin/openssl.exe version -a
+  ${_WINE} "${_pkg}"/bin/openssl.exe ciphers -s -V -stdname
 
   # Create package
 
-  _OUT="${_NAM}-${_VER}${_REV}-win${_cpu}-mingw"
-  _BAS="${_NAM}-${_VER}-win${_cpu}-mingw"
+  _OUT="${_NAM}-${_VER}${_REV}${_PKGSUFFIX}"
+  _BAS="${_NAM}-${_VER}${_PKGSUFFIX}"
   _DST="$(mktemp -d)/${_BAS}"
 
   mkdir -p "${_DST}/include/openssl"
@@ -205,7 +205,6 @@ _cpu="$2"
     cp -f -p README.md   "${_DST}/"
     cp -f -p FAQ.md      "${_DST}/"
     cp -f -p NEWS.md     "${_DST}/"
-    unix2dos --quiet --keepdate "${_DST}"/*.md
   else
     cp -f -p CHANGES     "${_DST}/CHANGES.txt"
     cp -f -p LICENSE     "${_DST}/LICENSE.txt"
@@ -215,9 +214,7 @@ _cpu="$2"
   fi
 
   # Luckily, applink is not implemented for 64-bit mingw, omit this file then
-  [ "${_cpu}" = '32' ] && cp -f -p ms/applink.c "${_DST}/include/openssl/"
-
-  unix2dos --quiet --keepdate "${_DST}"/*.txt
+  [ "${_CPU}" = 'x86' ] && cp -f -p ms/applink.c "${_DST}/include/openssl/"
 
   ../_pkg.sh "$(pwd)/${_ref}"
 )

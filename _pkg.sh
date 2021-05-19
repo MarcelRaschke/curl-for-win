@@ -6,7 +6,7 @@
 cd "$(dirname "$0")" || exit
 
 # Map tar to GNU tar, if it exists (e.g. on macOS)
-command -v gtar >/dev/null && alias tar=gtar
+command -v gtar >/dev/null 2>&1 && alias tar=gtar
 
 _cdo="$(pwd)"
 
@@ -16,7 +16,6 @@ Visit the project page for details about these builds and the list of changes:
 
    ${_URL}
 EOF
-unix2dos --quiet --keepdate "${_fn}"
 touch -c -r "$1" "${_fn}"
 
 _fn="${_DST}/BUILD-HOMEPAGE.url"
@@ -27,10 +26,10 @@ EOF
 unix2dos --quiet --keepdate "${_fn}"
 touch -c -r "$1" "${_fn}"
 
+find "${_DST}" -name '*.txt' -o -name '*.md' -o -name '*.rst' -exec unix2dos --quiet --keepdate {} +
 find "${_DST}" -depth -type d -exec touch -c -r "$1" '{}' \;
-
-# NOTE: This isn't effective on MSYS2
-find "${_DST}" \( -name '*.exe' -o -name '*.dll' -o -name '*.a' \) -exec chmod a-x {} +
+# NOTE: This isn't effective on MSYS2:
+find "${_DST}" -name '*.exe' -o -name '*.dll' -o -name '*.a' -exec chmod a-x {} +
 
 create_pkg() {
   arch_ext="$2"
@@ -93,17 +92,15 @@ create_pkg() {
     hshl="$(openssl dgst -sha256 "${_pkg}" \
       | sed -n -E 's,.+= ([0-9a-fA-F]{64}),\1,p')"
     # https://developers.virustotal.com/v3.0/reference
-    out="$(curl --user-agent curl \
-      --fail --silent --show-error \
-      --request POST 'https://www.virustotal.com/api/v3/files' \
+    out="$(curl --user-agent curl --fail --silent --show-error \
+      'https://www.virustotal.com/api/v3/files' \
       --header "x-apikey: ${VIRUSTOTAL_APIKEY}" \
       --form "file=@${_pkg}")"
     # shellcheck disable=SC2181
     if [ "$?" = 0 ]; then
       id="$(echo "${out}" | jq --raw-output '.data.id')"
-      out="$(curl --user-agent curl \
-        --fail --silent --show-error \
-        --request GET "https://www.virustotal.com/api/v3/analyses/${id}" \
+      out="$(curl --user-agent curl --fail --silent --show-error \
+        "https://www.virustotal.com/api/v3/analyses/${id}" \
         --header "x-apikey: ${VIRUSTOTAL_APIKEY}")"
       # shellcheck disable=SC2181
       if [ "$?" = 0 ]; then

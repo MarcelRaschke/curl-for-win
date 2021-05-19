@@ -4,12 +4,33 @@
 # See LICENSE.md
 
 # Requirements (not a comprehensive list at this point):
-#   Windows:
-#     MSYS2: zip zstd mingw-w64-{i686,x86_64}-{clang,jq,osslsigncode,python3-pip} gpg python3
 #   Linux
 #     zip zstd binutils-mingw-w64 gcc-mingw-w64 gnupg-curl jq osslsigncode dos2unix realpath wine
 #   Mac:
 #     brew install xz zstd gnu-tar mingw-w64 jq osslsigncode dos2unix gpg gnu-sed wine
+#   Windows:
+#     MSYS2: zip zstd mingw-w64-{i686,x86_64}-{clang,jq,osslsigncode,python3-pip} gpg python3
+
+# TODO:
+#   - Enable Control Flow Guard (once FLOSS toolchains support it)
+#   - ARM64 builds (once FLOSS toolchains support it)
+#   - Switch to libssh from libssh2?
+
+# Tools:
+#                compiler        build
+#                --------------- ----------
+#   brotli.sh    clang           cmake
+#   nghttp2.sh   clang           cmake
+#   nghttp3.sh   clang           cmake
+#   zlib.sh      clang           cmake
+#   zstd.sh      clang           cmake
+#   c-ares.sh    clang           cmake
+#   ngtcp2.sh    gcc             autotools  TODO: move to cmake and clang (couldn't detect openssl, and even configure needs a manual patch)
+#   curl.sh      clang           make       TODO: move to cmake
+#   libssh2.sh   clang           make       TODO: move to cmake
+#   libgsasl.sh  clang           autotools
+#   libidn2.sh   gcc             autotools  TODO: move to clang
+#   openssl.sh   gcc/clang (v3)  autotools
 
 cd "$(dirname "$0")" || exit
 
@@ -127,18 +148,23 @@ if [ "${CC}" = 'mingw-clang' ]; then
   echo ".clang$("clang${_CCSUFFIX}" --version | grep -o -a -E ' [0-9]*\.[0-9]*[\.][0-9]*')" >> "${_BLD}"
 fi
 
+unset ver
 case "${_OS}" in
-  mac)   ver="$(brew info --json=v1 mingw-w64 | jq --raw-output '.[] | select(.name == "mingw-w64") | .versions.stable')";;
-  # FIXME: Linux-distro specific
-  linux) ver="$(apt-cache show mingw-w64 | grep -a '^Version:' | cut -c 10-)";;
-  *)     ver='';;
+  mac)
+    ver="$(brew info --json=v2 --formula mingw-w64 | jq --raw-output '.formulae[] | select(.name == "mingw-w64") | .versions.stable')";;
+  linux)
+    [ -n "${ver}" ] || ver="$(dpkg   --status       mingw-w64)"
+    [ -n "${ver}" ] || ver="$(rpm    --query        mingw-w64)"
+    [ -n "${ver}" ] || ver="$(pacman --query --info mingw-w64)"
+    ver="$(printf '%s' "${ver}" | sed -E 's|^(Version ?:) *(.+)$|\2|g')"
+    ;;
 esac
 [ -n "${ver}" ] && echo ".mingw-w64 ${ver}" >> "${_BLD}"
 
 _ori_path="${PATH}"
 
 build_single_target() {
-  _cpu="$1"
+  export _CPU="$1"
 
   export _TRIPLET=
   export _SYSROOT=
@@ -146,15 +172,25 @@ build_single_target() {
   export _MAKE='make'
   export _WINE=''
 
-  [ "${_cpu}" = '32' ] && _machine='i686'
-  [ "${_cpu}" = '64' ] && _machine='x86_64'
+  export _OPTM=
+  [ "${_CPU}" = 'x86' ] && _OPTM='-m32'
+  [ "${_CPU}" = 'x64' ] && _OPTM='-m64'
+
+  [ "${_CPU}" = 'x86' ]   && _machine='i686'
+  [ "${_CPU}" = 'x64' ]   && _machine='x86_64'
+  [ "${_CPU}" = 'arm64' ] && _machine="${_CPU}"
+
+  export _PKGSUFFIX
+  [ "${_CPU}" = 'x86' ] && _PKGSUFFIX="-win32-mingw"
+  [ "${_CPU}" = 'x64' ] && _PKGSUFFIX="-win64-mingw"
 
   if [ "${_OS}" = 'win' ]; then
-    export PATH="/mingw${_cpu}/bin:${_ori_path}"
+    export PATH
+    [ "${_CPU}" = 'x86' ] && PATH="/mingw32/bin:${_ori_path}"
+    [ "${_CPU}" = 'x64' ] && PATH="/mingw64/bin:${_ori_path}"
     export _MAKE='mingw32-make'
 
     # Install required component
-    # TODO: add `--progress-bar off` when pip 10.0.0 is available
     pip3 --version
     pip3 --disable-pip-version-check --no-cache-dir install --user pefile
   else
@@ -192,26 +228,25 @@ build_single_target() {
 
   command -v "$(dirname "$0")/osslsigncode-local" >/dev/null 2>&1 || unset SIGN_CODE_KEY
 
-  time ./zlib.sh       "${ZLIB_VER_}" "${_cpu}"
-  time ./zstd.sh       "${ZSTD_VER_}" "${_cpu}"
-  time ./brotli.sh   "${BROTLI_VER_}" "${_cpu}"
-  time ./libidn2.sh "${LIBIDN2_VER_}" "${_cpu}"
-  time ./c-ares.sh    "${CARES_VER_}" "${_cpu}"
-  time ./nghttp2.sh "${NGHTTP2_VER_}" "${_cpu}"
-  time ./nghttp3.sh "${NGHTTP3_VER_}" "${_cpu}"
-  time ./openssl.sh "${OPENSSL_VER_}" "${_cpu}"
-  time ./ngtcp2.sh   "${NGTCP2_VER_}" "${_cpu}"
-  time ./libssh2.sh "${LIBSSH2_VER_}" "${_cpu}"
-  time ./curl.sh       "${CURL_VER_}" "${_cpu}"
+  time ./zlib.sh         "${ZLIB_VER_}"
+  time ./zlibng.sh     "${ZLIBNG_VER_}"
+  time ./zstd.sh         "${ZSTD_VER_}"
+  time ./brotli.sh     "${BROTLI_VER_}"
+  time ./libgsasl.sh "${LIBGSASL_VER_}"
+  time ./libidn2.sh   "${LIBIDN2_VER_}"
+  time ./c-ares.sh      "${CARES_VER_}"
+  time ./nghttp2.sh   "${NGHTTP2_VER_}"
+  time ./nghttp3.sh   "${NGHTTP3_VER_}"
+  time ./openssl.sh   "${OPENSSL_VER_}"
+  time ./ngtcp2.sh     "${NGTCP2_VER_}"
+  time ./libssh2.sh   "${LIBSSH2_VER_}"
+  time ./curl.sh         "${CURL_VER_}"
 }
 
 # Build binaries
-if [ -n "${CPU}" ]; then
-  build_single_target "${CPU}"
-else
-  build_single_target 64
-  build_single_target 32
-fi
+  build_single_target x64
+  build_single_target x86
+# build_single_target arm64
 
 # Upload/deploy binaries
 . ./_ul.sh || exit 1

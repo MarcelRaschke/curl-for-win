@@ -42,8 +42,8 @@ build_script:
         sh -c ./_ci-linux-debian.sh
 artifacts:
   - path: '*-*-mingw*.*'
-    name: master
+    name: package
   - path: 'all-mingw*.*'
     name: all
 # init:
-#   - sh: curl --fail --silent --location --proto-redir =https 'https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-ssh.sh' | bash -e -
+#   - sh: curl --user-agent curl --fail --silent --location --proto-redir =https 'https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-ssh.sh' | bash -e -
